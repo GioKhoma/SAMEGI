@@ -1,0 +1,83 @@
+volumes:
+  samegi_local_postgres_data: {}
+  samegi_local_postgres_data_backups: {}
+  samegi_local_redis_data: {}
+  portainer_data: {}  # Volume for Portainer data persistence
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: samegi_local_django
+    container_name: samegi_local_django
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    ports:
+      - '8000:8000'
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: samegi_production_postgres
+    container_name: samegi_local_postgres
+    volumes:
+      - samegi_local_postgres_data:/var/lib/postgresql/data
+      - samegi_local_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+
+  redis:
+    image: docker.io/redis:6
+    container_name: samegi_local_redis
+    volumes:
+      - samegi_local_redis_data:/data
+
+  celeryworker:
+    <<: *django
+    image: samegi_local_celeryworker
+    container_name: samegi_local_celeryworker
+    depends_on:
+      - redis
+      - postgres
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: samegi_local_celerybeat
+    container_name: samegi_local_celerybeat
+    depends_on:
+      - redis
+      - postgres
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: samegi_local_flower
+    container_name: samegi_local_flower
+    ports:
+      - '5555:5555'
+    command: /start-flower
+
+  portainer:
+    image: portainer/portainer-ce:latest  # Portainer image (Community Edition)
+    container_name: samegi_local_portainer
+    restart: always
+    ports:
+      - '9000:9000'  # Expose Portainer UI on port 9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # To interact with Docker
+      - portainer_data:/data  # Persistent volume for Portainer data
+    networks:
+      - default  # Optional: ensure it connects to the same network as other services
+
